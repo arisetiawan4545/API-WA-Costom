@@ -2,7 +2,7 @@ const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const path = require('path');
-const fs = require('fs'); // Modul tambahan untuk hapus cache otomatis
+const fs = require('fs');
 
 const app = express();
 const SECRET_API_KEY = "mysehati-super-rahasia-2026";
@@ -29,11 +29,10 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // ==========================================
-// 🤖 INISIALISASI WHATSAPP BOT (ENTERPRISE GRADE)
+// 🤖 INISIALISASI WHATSAPP BOT (STEALTH MODE)
 // ==========================================
 const client = new Client({
     authStrategy: new LocalAuth(),
-    // Tambahkan baris ini untuk mencegah bug versi WA Web:
     webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
@@ -50,7 +49,10 @@ const client = new Client({
             '--disable-gpu',
             '--single-process', 
             '--disable-software-rasterizer',
-            '--mute-audio'
+            '--mute-audio',
+            // 🕵️ STEALTH INJECTION: Menyembunyikan identitas Bot
+            '--disable-blink-features=AutomationControlled',
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         ]
     }
 });
@@ -62,7 +64,7 @@ client.on('qr', (qr) => {
 });
 
 client.once('ready', () => {
-    console.log(`${logTime()} ✅ MANTAP! Sistem Notifikasi Sehati Care Plus ON & STABIL!`);
+    console.log(`${logTime()} ✅ MANTAP! Sistem Notifikasi Sehati Care Plus ON & STABIL (Stealth Mode Active)!`);
     isClientReady = true;
     qrCodeData = ''; 
 });
@@ -80,7 +82,6 @@ client.on('disconnected', async (reason) => {
         console.error(`${logTime()} ⚠️ Gagal destroy client:`, error.message);
     }
 
-    // Jika diputus paksa (logout dari HP), hapus cache memori sampai bersih
     if (reason === 'NAVIGATION_FAIL_INTENDED' || reason === 'LOGOUT' || reason === 'CONFLICT') {
         console.log(`${logTime()} 🧹 Membersihkan folder cache sesi lama...`);
         const authPath = './.wwebjs_auth';
@@ -101,7 +102,6 @@ client.on('disconnected', async (reason) => {
 client.on('message', async msg => {
     if (msg.from === 'status@broadcast') return;
 
-    // 🛡️ Mencegah Bug @lid
     let senderId = msg.from;
     if (senderId.includes('@lid')) {
         try {
@@ -114,10 +114,9 @@ client.on('message', async msg => {
 
     console.log(`${logTime()} 📥 Incoming Chat dari ${senderId}: ${msg.body}`);
 
-    // URL n8n (Timeout Protection)
     const N8N_WEBHOOK_URL = 'http://localhost:8080/webhook/webhook-wa-mysehati'; 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // Batas 10 detik
+    const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
     try {
         await fetch(N8N_WEBHOOK_URL, {
@@ -137,55 +136,60 @@ client.on('message', async msg => {
 client.initialize();
 
 // ==========================================
-// 🚦 SISTEM ANTREAN & HUMANIZER (ANTI-SPAM)
+// 🚦 SISTEM ANTREAN & HUMANIZER LENGKAP
 // ==========================================
 const messageQueue = [];
 let isProcessingQueue = false;
 
-// Fungsi untuk membuat jeda (delay)
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const processQueue = async () => {
-    // Cegah eksekusi ganda jika antrean sedang diproses atau antrean kosong
     if (isProcessingQueue || messageQueue.length === 0) return;
     isProcessingQueue = true;
 
     while (messageQueue.length > 0) {
-        // Ambil data paling depan dari array
         const { finalTarget, message, resolveObj, rejectObj } = messageQueue.shift();
 
         try {
             console.log(`${logTime()} ⚙️ [QUEUE] Memproses pesan untuk ${finalTarget}...`);
             
-            // 1. Ambil objek chat dari kontak target
+            // 1. Ambil objek chat
             const chat = await client.getChatById(finalTarget);
             
-            // 2. Kirim status "Sedang mengetik..." (Humanizer)
+            // 🕵️ PRESENCE SPOOFING: Simulasi buka HP & buka obrolan
+            console.log(`${logTime()} 👻 [STEALTH] Simulasi human presence & open chat...`);
+            await client.sendPresenceAvailable(); // Bikin online
+            await chat.sendSeen(); // Centang biru chat sebelumnya (jika ada)
+
+            // Jeda mikir sejenak seolah sedang membaca (1 - 2 detik)
+            await delay(Math.floor(Math.random() * (2000 - 1000 + 1)) + 1000);
+
+            // 2. Mulai ngetik
             await chat.sendStateTyping();
 
-            // 3. Beri jeda acak antara 2 hingga 4 detik
-            const typingDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
-            await delay(typingDelay);
-
-            // 4. Hapus status "Sedang mengetik..." di-comment agar tidak memicu bug Meta
-            // await chat.clearState(); 
+            // 3. Jeda ngetik acak (2 - 5 detik tergantung panjang pesan)
+            // Rumus canggih: Makin panjang teks, makin lama delay ngetiknya (maksimal 6 detik)
+            let dynamicDelay = message.length * 40; 
+            if (dynamicDelay < 2000) dynamicDelay = 2500;
+            if (dynamicDelay > 6000) dynamicDelay = 6000;
             
-            // 🔍 DEBUGGING LOGS: Cek isi dan tipe data pesan dari n8n
+            const finalTypingDelay = Math.floor(Math.random() * (dynamicDelay - (dynamicDelay - 500) + 1)) + (dynamicDelay - 500);
+            await delay(finalTypingDelay);
+            
+            // 🔍 DEBUGGING LOGS
             console.log(`${logTime()} 🔍 DEBUG: Tipe data pesan -> ${typeof message}`);
-            console.log(`${logTime()} 🔍 DEBUG: Isi pesan -> "${message}"`);
             
-            // Kirim pesan sungguhan
+            // 4. Kirim pesan
             const sendResult = await client.sendMessage(finalTarget, message);
             
-            // Tangkap ID unik dari WhatsApp sebagai bukti sukses terkirim dari server Meta
             const msgId = sendResult.id ? (sendResult.id._serialized || sendResult.id.id) : 'ID-TIDAK-TERBACA';
             console.log(`${logTime()} 📤 [QUEUE] Outgoing Sukses! ID Pesan WA: ${msgId}`);
             
-            // Beri respons sukses ke n8n
-            resolveObj({ status: true, message: 'Terkirim via Mysehati API-System (Queued)' });
+            resolveObj({ status: true, message: 'Terkirim via Mysehati API-System (Stealth Queued)' });
 
-            // 5. Cooldown 1.5 detik sebelum memproses pesan CS selanjutnya
-            await delay(1500);
+            // 5. Cooldown acak antar antrean (1.5 - 3 detik) agar tidak berpola robot
+            const cooldown = Math.floor(Math.random() * (3000 - 1500 + 1)) + 1500;
+            await delay(cooldown);
 
         } catch (error) {
             console.error(`${logTime()} ❌ [QUEUE] Outgoing Gagal ke ${finalTarget}:`, error.message);
@@ -197,9 +201,8 @@ const processQueue = async () => {
 };
 
 // ==========================================
-// 🌐 ROUTING DASHBOARD & API (ENTERPRISE)
+// 🌐 ROUTING DASHBOARD & API 
 // ==========================================
-
 app.get('/api/status', (req, res) => {
     res.json({ 
         whatsapp_ready: isClientReady, 
@@ -208,7 +211,6 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-// 🚨 ENDPOINT PANIC BUTTON (Hapus Cache Manual)
 app.get('/api/reset', async (req, res) => {
     console.log(`${logTime()} 🚨 PERINTAH RESET DARURAT DITERIMA!`);
     try {
@@ -219,14 +221,12 @@ app.get('/api/reset', async (req, res) => {
         }
         res.json({ status: true, message: 'Sistem dibersihkan! Restarting...' });
         
-        // Matikan node process agar PM2 otomatis menyalakannya dalam posisi "Fresh"
         setTimeout(() => process.exit(1), 2000);
     } catch (error) {
         res.status(500).json({ status: false, error: error.message });
     }
 });
 
-// 📩 ENDPOINT PENERIMA PAYLOAD DARI N8N
 app.post('/api/send-message', (req, res) => {
     const clientApiKey = req.headers['x-api-key'];
 
@@ -255,11 +255,8 @@ app.post('/api/send-message', (req, res) => {
         finalTarget = `${formattedNumber}@c.us`; 
     }
     
-    // Masukkan ke antrean (Queue) BUKAN eksekusi instan
     new Promise((resolve, reject) => {
         messageQueue.push({ finalTarget, message, resolveObj: resolve, rejectObj: reject });
-        
-        // Pelatuk untuk menyalakan mesin antrean (hanya jalan jika sedang berhenti)
         processQueue();
     })
     .then((result) => res.status(200).json(result))
@@ -267,5 +264,5 @@ app.post('/api/send-message', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Mysehati API-System (Enterprise Edition) berjalan di http://localhost:${PORT}`);
+    console.log(`🚀 Mysehati API-System (Stealth Edition) berjalan di http://localhost:${PORT}`);
 });
