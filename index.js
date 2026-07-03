@@ -163,7 +163,7 @@ const processQueue = async () => {
             await delay(typingDelay);
 
             // 4. Hapus status "Sedang mengetik..." lalu kirim pesan sungguhan
-            await chat.clearState();
+            //await chat.clearState();
             await client.sendMessage(finalTarget, message);
             
             console.log(`${logTime()} 📤 [QUEUE] Outgoing Sukses ke ${finalTarget}`);
