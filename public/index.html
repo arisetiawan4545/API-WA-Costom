@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mysehati API-System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#121212',
+                        darkCard: '#1E1E1E',
+                        mysehatiRed: '#DC2626'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkBg text-white font-sans min-h-screen">
+
+    <header class="pt-12 pb-6 px-8 flex justify-between items-end border-b border-gray-800">
+        <div>
+            <div class="text-3xl font-bold tracking-wider text-white">
+                MYSEHATI <span class="text-mysehatiRed">API</span>
+            </div>
+            <p class="text-gray-400 text-sm mt-1">Enterprise Notification System</p>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <button onclick="resetSystem()" id="btn-reset" class="px-4 py-2 rounded border border-red-900 bg-red-900/20 text-red-400 hover:bg-red-900/50 hover:text-white transition-all text-sm font-semibold flex items-center gap-2">
+                🔄 Reset & Bersihkan Cache
+            </button>
+
+            <div id="status-badge" class="px-4 py-2 rounded border border-gray-600 bg-gray-800 text-sm font-semibold flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-gray-400 animate-pulse"></span> Menghubungkan...
+            </div>
+        </div>
+    </header>
+
+    <main class="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <div class="bg-darkCard p-6 rounded-lg border border-gray-800 shadow-xl">
+            <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Status Koneksi</h2>
+            
+            <div class="flex flex-col items-center justify-center min-h-[300px]">
+                <div id="qr-container" class="hidden bg-white p-4 rounded mb-4"></div>
+                <p id="qr-text" class="text-gray-400 text-sm hidden text-center">Scan QR Code ini dengan aplikasi WhatsApp Anda</p>
+
+                <div id="lottie-container" class="hidden flex-col items-center">
+                    <lottie-player src="./success.json" background="transparent" speed="1" style="width: 200px; height: 200px;" loop autoplay></lottie-player>
+                    <h3 class="text-2xl font-bold text-green-500 mt-2">Sistem Stabil & Terkoneksi</h3>
+                    <p class="text-gray-400 mt-1">API siap menerima instruksi otomatisasi.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-darkCard p-6 rounded-lg border border-gray-800 shadow-xl">
+            <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Detail Endpoint n8n</h2>
+            <div class="space-y-4">
+                
+                <div class="bg-darkBg p-4 rounded border border-gray-700">
+                    <span class="text-xs font-bold text-mysehatiRed uppercase tracking-widest">URL Method: POST</span>
+                    <p class="text-lg font-mono text-gray-200 mt-1">http://localhost:3000/api/send-message</p>
+                </div>
+
+                <div class="bg-darkBg p-4 rounded border border-gray-700">
+                    <span class="text-xs font-bold text-green-500 uppercase tracking-widest">Headers Required 🛡️</span>
+                    <pre class="text-sm font-mono text-yellow-400 mt-2">x-api-key: mysehati-super-rahasia-2026</pre>
+                </div>
+                
+                <div class="bg-darkBg p-4 rounded border border-gray-700">
+                    <span class="text-xs font-bold text-mysehatiRed uppercase tracking-widest">JSON Payload (Node n8n)</span>
+                    <pre class="text-sm font-mono text-gray-300 mt-2">
+{
+  "target": "{{ $json.sender }}",
+  "message": "{{ $json.output }}"
+}
+                    </pre>
+                </div>
+                
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        let qrCodeInstance = null;
+
+        // 🚨 FUNGSI EKSEKUSI PANIC BUTTON
+        async function resetSystem() {
+            const isConfirm = confirm("🚨 YAKIN INGIN MERESET SISTEM?\n\nIni akan memaksa bot logout, menghapus file cache yang nyangkut, dan merestart mesin Node.js.");
+            
+            if (!isConfirm) return;
+
+            const btn = document.getElementById('btn-reset');
+            btn.innerHTML = "⏳ Proses Reset...";
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/reset');
+                const data = await response.json();
+                
+                if(data.status) {
+                    alert("✅ " + data.message);
+                    // Tunggu 3 detik agar PM2 menyalakan ulang, lalu refresh halaman
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 3500);
+                } else {
+                    alert("❌ Gagal mereset: " + data.error);
+                    resetButtonState(btn);
+                }
+            } catch (error) {
+                alert("❌ Terjadi kesalahan jaringan saat mencoba reset.");
+                resetButtonState(btn);
+            }
+        }
+
+        function resetButtonState(btn) {
+            btn.innerHTML = "🔄 Reset & Bersihkan Cache";
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            btn.disabled = false;
+        }
+
+        // 🔄 FUNGSI POLLING STATUS (Tetap berjalan tiap 3 detik)
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                const badge = document.getElementById('status-badge');
+                
+                if (data.whatsapp_ready) {
+                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Online & Ready`;
+                    badge.className = "px-4 py-2 rounded border border-green-900 bg-green-900/30 text-green-400 text-sm font-semibold flex items-center gap-2";
+                    
+                    document.getElementById('lottie-container').classList.remove('hidden');
+                    document.getElementById('lottie-container').classList.add('flex');
+                    document.getElementById('qr-container').classList.add('hidden');
+                    document.getElementById('qr-text').classList.add('hidden');
+                } else {
+                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span> Menunggu Login`;
+                    badge.className = "px-4 py-2 rounded border border-yellow-900 bg-yellow-900/30 text-yellow-400 text-sm font-semibold flex items-center gap-2";
+                    
+                    document.getElementById('lottie-container').classList.add('hidden');
+                    document.getElementById('lottie-container').classList.remove('flex');
+                    
+                    if (data.qr_code) {
+                        document.getElementById('qr-container').classList.remove('hidden');
+                        document.getElementById('qr-text').classList.remove('hidden');
+                        
+                        document.getElementById('qr-container').innerHTML = '';
+                        new QRCode(document.getElementById("qr-container"), {
+                            text: data.qr_code,
+                            width: 200,
+                            height: 200,
+                            colorDark : "#000000",
+                            colorLight : "#ffffff",
+                            correctLevel : QRCode.CorrectLevel.H
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error("Gagal mengambil status", error);
+            }
+        }
+
+        setInterval(fetchStatus, 3000);
+        fetchStatus();
+    </script>
+</body>
+</html>
