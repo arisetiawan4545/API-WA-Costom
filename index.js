@@ -33,6 +33,11 @@ process.on('unhandledRejection', (reason) => {
 // ==========================================
 const client = new Client({
     authStrategy: new LocalAuth(),
+    // Tambahkan baris ini untuk mencegah bug versi WA Web:
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+    },
     puppeteer: {
         headless: true,
         args: [
@@ -43,7 +48,7 @@ const client = new Client({
             '--no-first-run',
             '--no-zygote',
             '--disable-gpu',
-            '--single-process', // Menghemat RAM server kecil
+            '--single-process', 
             '--disable-software-rasterizer',
             '--mute-audio'
         ]
@@ -162,14 +167,22 @@ const processQueue = async () => {
             const typingDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
             await delay(typingDelay);
 
-            // 4. Hapus status "Sedang mengetik..." lalu kirim pesan sungguhan
-            //await chat.clearState();
-            await client.sendMessage(finalTarget, message);
+            // 4. Hapus status "Sedang mengetik..." di-comment agar tidak memicu bug Meta
+            // await chat.clearState(); 
             
-            console.log(`${logTime()} 📤 [QUEUE] Outgoing Sukses ke ${finalTarget}`);
+            // 🔍 DEBUGGING LOGS: Cek isi dan tipe data pesan dari n8n
+            console.log(`${logTime()} 🔍 DEBUG: Tipe data pesan -> ${typeof message}`);
+            console.log(`${logTime()} 🔍 DEBUG: Isi pesan -> "${message}"`);
             
-            // Beri respons sukses ke n8n (agar n8n tidak timeout menunggu)
-            resolveObj({ status: true, message: 'Terkirim via Mysehati API-System (Queued & Humanized)' });
+            // Kirim pesan sungguhan
+            const sendResult = await client.sendMessage(finalTarget, message);
+            
+            // Tangkap ID unik dari WhatsApp sebagai bukti sukses terkirim dari server Meta
+            const msgId = sendResult.id ? (sendResult.id._serialized || sendResult.id.id) : 'ID-TIDAK-TERBACA';
+            console.log(`${logTime()} 📤 [QUEUE] Outgoing Sukses! ID Pesan WA: ${msgId}`);
+            
+            // Beri respons sukses ke n8n
+            resolveObj({ status: true, message: 'Terkirim via Mysehati API-System (Queued)' });
 
             // 5. Cooldown 1.5 detik sebelum memproses pesan CS selanjutnya
             await delay(1500);
