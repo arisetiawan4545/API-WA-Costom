@@ -132,11 +132,67 @@ client.on('message', async msg => {
 client.initialize();
 
 // ==========================================
+// 🚦 SISTEM ANTREAN & HUMANIZER (ANTI-SPAM)
+// ==========================================
+const messageQueue = [];
+let isProcessingQueue = false;
+
+// Fungsi untuk membuat jeda (delay)
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const processQueue = async () => {
+    // Cegah eksekusi ganda jika antrean sedang diproses atau antrean kosong
+    if (isProcessingQueue || messageQueue.length === 0) return;
+    isProcessingQueue = true;
+
+    while (messageQueue.length > 0) {
+        // Ambil data paling depan dari array
+        const { finalTarget, message, resolveObj, rejectObj } = messageQueue.shift();
+
+        try {
+            console.log(`${logTime()} ⚙️ [QUEUE] Memproses pesan untuk ${finalTarget}...`);
+            
+            // 1. Ambil objek chat dari kontak target
+            const chat = await client.getChatById(finalTarget);
+            
+            // 2. Kirim status "Sedang mengetik..." (Humanizer)
+            await chat.sendStateTyping();
+
+            // 3. Beri jeda acak antara 2 hingga 4 detik
+            const typingDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
+            await delay(typingDelay);
+
+            // 4. Hapus status "Sedang mengetik..." lalu kirim pesan sungguhan
+            await chat.clearState();
+            await client.sendMessage(finalTarget, message);
+            
+            console.log(`${logTime()} 📤 [QUEUE] Outgoing Sukses ke ${finalTarget}`);
+            
+            // Beri respons sukses ke n8n (agar n8n tidak timeout menunggu)
+            resolveObj({ status: true, message: 'Terkirim via Mysehati API-System (Queued & Humanized)' });
+
+            // 5. Cooldown 1.5 detik sebelum memproses pesan CS selanjutnya
+            await delay(1500);
+
+        } catch (error) {
+            console.error(`${logTime()} ❌ [QUEUE] Outgoing Gagal ke ${finalTarget}:`, error.message);
+            rejectObj(error);
+        }
+    }
+
+    isProcessingQueue = false;
+};
+
+// ==========================================
 // 🌐 ROUTING DASHBOARD & API (ENTERPRISE)
 // ==========================================
 
 app.get('/api/status', (req, res) => {
-    res.json({ whatsapp_ready: isClientReady, qr_code: qrCodeData });
+    res.json({ 
+        whatsapp_ready: isClientReady, 
+        qr_code: qrCodeData,
+        queue_length: messageQueue.length 
+    });
 });
 
 // 🚨 ENDPOINT PANIC BUTTON (Hapus Cache Manual)
@@ -157,7 +213,8 @@ app.get('/api/reset', async (req, res) => {
     }
 });
 
-app.post('/api/send-message', async (req, res) => {
+// 📩 ENDPOINT PENERIMA PAYLOAD DARI N8N
+app.post('/api/send-message', (req, res) => {
     const clientApiKey = req.headers['x-api-key'];
 
     if (!clientApiKey || clientApiKey !== SECRET_API_KEY) {
@@ -174,25 +231,26 @@ app.post('/api/send-message', async (req, res) => {
         return res.status(400).json({ status: false, message: 'Parameter tidak lengkap.' });
     }
 
-    try {
-        let finalTarget;
-        if (target.includes('@')) {
-            finalTarget = target; 
-        } else {
-            let formattedNumber = target.replace(/\D/g, ''); 
-            if (formattedNumber.startsWith('0')) {
-                formattedNumber = '62' + formattedNumber.substring(1);
-            }
-            finalTarget = `${formattedNumber}@c.us`; 
+    let finalTarget;
+    if (target.includes('@')) {
+        finalTarget = target; 
+    } else {
+        let formattedNumber = target.replace(/\D/g, ''); 
+        if (formattedNumber.startsWith('0')) {
+            formattedNumber = '62' + formattedNumber.substring(1);
         }
-        
-        await client.sendMessage(finalTarget, message);
-        console.log(`${logTime()} 📤 Outgoing Sukses ke ${finalTarget}`);
-        return res.status(200).json({ status: true, message: 'Terkirim via Mysehati API-System' });
-    } catch (error) {
-        console.error(`${logTime()} ❌ Outgoing Gagal:`, error.message);
-        return res.status(500).json({ status: false, error: error.message });
+        finalTarget = `${formattedNumber}@c.us`; 
     }
+    
+    // Masukkan ke antrean (Queue) BUKAN eksekusi instan
+    new Promise((resolve, reject) => {
+        messageQueue.push({ finalTarget, message, resolveObj: resolve, rejectObj: reject });
+        
+        // Pelatuk untuk menyalakan mesin antrean (hanya jalan jika sedang berhenti)
+        processQueue();
+    })
+    .then((result) => res.status(200).json(result))
+    .catch((error) => res.status(500).json({ status: false, error: error.message }));
 });
 
 app.listen(PORT, () => {
